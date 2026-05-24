@@ -2,7 +2,7 @@
 
 Two ways to set up `SponsorshipDb`:
 
-## Option A — EF Core migrations (recommended for development)
+## Option A - EF Core migrations (recommended for development)
 
 From the repo root:
 
@@ -16,7 +16,7 @@ When the API starts in Development, `DbSeeder` runs automatically and
 inserts the 4 demo roles, 5 sponsorship types, and 4 demo users
 (passwords all `Demo@123`).
 
-## Option B — SQL Server Management Studio
+## Option B - SQL Server Management Studio
 
 1. Connect SSMS to `(localdb)\MSSQLLocalDB` (or your remote MSSQL).
 2. Create an empty database: `CREATE DATABASE SponsorshipDb;`
@@ -25,7 +25,7 @@ inserts the 4 demo roles, 5 sponsorship types, and 4 demo users
 
 > The seed SQL contains a pre-baked BCrypt hash for `Demo@123`. If you
 > prefer to generate a fresh hash, run the API once with Development
-> environment — `DbSeeder` will insert the same users with a freshly
+> environment - `DbSeeder` will insert the same users with a freshly
 > hashed password and the `IF NOT EXISTS` guards in `02_seed.sql` will
 > skip duplicates afterwards.
 
