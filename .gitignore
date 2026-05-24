@@ -1,0 +1,25 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Logs
+logs/
+*.log
+
+# Frontend
+node_modules/
+dist/
+.angular/
+coverage/
+
+# Env / secrets
+*.env
+appsettings.Local.json
+appsettings.Production.json
+
+# OS
+.DS_Store
+Thumbs.db
