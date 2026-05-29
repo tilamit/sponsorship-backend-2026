@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Test SDK + xUnit runner -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
+    <!-- Mocking + assertions. FluentAssertions pinned to 6.12.x (Apache-2.0, free);
+         7.x/8.x require a commercial license. -->
+    <PackageReference Include="NSubstitute" Version="5.1.0" />
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
+
+    <!-- In-memory EF Core provider for repository ("mock database") tests -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Referencing the composition root brings Application + Domain transitively,
+         so the single test project can cover every layer. -->
+    <ProjectReference Include="..\..\src\Sponsorship.Infrastructure\Sponsorship.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

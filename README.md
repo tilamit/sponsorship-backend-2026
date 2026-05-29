@@ -436,3 +436,106 @@ GET    /api/health                                     Liveness probe
 - File upload (SupportingDocumentPath) is in the schema but the upload endpoint is intentionally not implemented - the column is reserved for a future iteration.
 - In-memory cache (IMemoryCache) is fine for single-instance deployments. A multi-node deployment would swap `MemoryCacheService` for a distributed cache (Redis) by re-binding `ICacheService`.
 - Swagger is left enabled in all environments so the assessor can drive the API directly. In a real production deployment it would be Development-only.
+
+---
+
+## 12. Testing
+
+A dedicated test project `tests/Sponsorship.Application.Tests` (added to `Sponsorship.sln`) covers all four layers from a single assembly. It references `Sponsorship.Infrastructure`, which transitively pulls in Application and Domain, so Domain, Application, and Infrastructure code can be exercised without multiple test projects. **166 tests, all passing.**
+
+### 12.1 Test Stack
+
+| Concern           | Tool                                                                              |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Test framework    | xUnit                                                                             |
+| Mocking           | NSubstitute (substitutes for every Application port)                              |
+| Assertions        | FluentAssertions 6.12.x (Apache-2.0; 7.x/8.x require a commercial license)         |
+| Mock database     | EF Core InMemory provider (isolated database per test)                            |
+| Coverage          | coverlet.collector                                                                |
+
+Shared helpers live in `TestSupport/`:
+
+- `FixedDateTimeProvider` - deterministic `IDateTimeProvider` so tests never depend on the wall clock.
+- `PassThroughCacheService` - a real `ICacheService` double that always invokes the factory and records `Remove` / `RemoveByPrefix` calls, so cache-eviction behaviour is assertable.
+- `TestData` - factory for building domain entities (User, Role, SponsorshipType, SponsorshipRequest, RefreshToken) with sensible defaults.
+- `InMemoryDb` - spins up an isolated `AppDbContext` per call so repository tests never share state.
+
+### 12.2 Running the Tests
+
+```powershell
+# From Backend/ - run the whole suite
+dotnet test
+
+# Or just the test project
+dotnet test tests/Sponsorship.Application.Tests
+
+# With code coverage
+dotnet test --collect:"XPlat Code Coverage"
+```
+
+### 12.3 Coverage by Area
+
+#### Domain - workflow state machine (`SponsorshipRequestTests`)
+
+- Constructor starts a request in `Draft` with all fields set and empty history.
+- `UpdateDraft` edits fields and stamps `UpdatedAt` while `Draft`; throws `DomainException` once the request has left `Draft`.
+- `Submit`: `Draft -> PendingManagerApproval` and records a history row; throws `InvalidWorkflowTransitionException` from every non-Draft state.
+- `Cancel`: allowed from `Draft`, `PendingManagerApproval`, and `PendingFinanceReview`; throws from the terminal states (`Approved`, `Rejected`, `Cancelled`).
+- `ManagerApprove -> PendingFinanceReview`, `ManagerReject -> Rejected`; both throw from any wrong state.
+- `FinanceApprove -> Approved`, `FinanceReject -> Rejected`; both throw from any wrong state.
+- Full approval path (`Submit -> ManagerApprove -> FinanceApprove`) accumulates three ordered history entries.
+
+#### Domain - refresh token lifecycle (`RefreshTokenTests`)
+
+- A new token is active and not revoked.
+- `IsExpired` boundary check (`now >= ExpiresAt`).
+- `Revoke` marks the token revoked and inactive; the overload records the successor (`ReplacedByToken`).
+- An expired token is inactive even when not revoked.
+
+#### Application - AuthService (`AuthServiceTests`)
+
+- **Login**: valid credentials issue tokens and persist the refresh token; unknown email -> 401 (password hasher never called); inactive user -> 401; wrong password -> 401 (nothing saved).
+- **Refresh**: unknown token -> 401; **already-revoked token triggers full chain revocation -> 401 (reuse/theft detection)**; expired token -> 401; missing user -> 401; inactive user -> 401; happy path rotates the token (old row revoked with `ReplacedByToken` set, new row added, new pair returned).
+- **Logout**: unknown token is a no-op (no save); an active token is revoked and saved; an already-revoked token keeps its original timestamp but still saves.
+
+#### Application - SponsorshipRequestService (`SponsorshipRequestServiceTests`)
+
+- **Create**: unauthenticated -> 401; missing user -> 404; missing type -> 404; inactive type -> `DomainException`; happy path persists a request owned by the current user (RequestorId taken from auth context, never the DTO).
+- **Update**: missing -> 404; non-owner -> `ForbiddenException`; inactive type -> `DomainException`; non-draft request -> `DomainException`; happy path updates and saves.
+- **GetById**: missing -> 404; requestor reading someone else's request -> `ForbiddenException`; owner can read own; Manager / FinanceAdmin / SystemAdmin can read any.
+- **List**: a Requestor sees only their own rows; Manager / FinanceAdmin / SystemAdmin see all.
+- **Submit / Cancel**: non-owner -> `ForbiddenException`; owner transitions and saves (cancel records remarks).
+
+#### Application - WorkflowService (`WorkflowServiceTests`)
+
+- Manager and Finance queues return only the requests in the matching status.
+- **ManagerDecision**: no user -> 401; missing -> 404; approve advances to `PendingFinanceReview` and evicts the history cache; reject moves to `Rejected`.
+- **FinanceDecision**: missing -> 404; approve moves to `Approved`; reject moves to `Rejected`.
+- **GetHistory**: missing -> 404; a Requestor cannot read another user's history (`ForbiddenException`); the owner gets ordered history served through the cache layer; Manager / FinanceAdmin / SystemAdmin can read any history.
+
+#### Application - Validators (FluentValidation.TestHelper)
+
+- `LoginDtoValidator` - valid passes; empty / malformed / over-256-char email and empty / over-200-char password fail.
+- `CreateRequestDtoValidator` - valid passes; event date today is allowed, past dates fail; empty or over-length Title / Department / EventName / Purpose fail; non-positive `SponsorshipTypeId`; non-positive amount; amount with more than two decimals; over-length ExpectedBenefit / Remarks; null optional fields pass.
+- `UpdateRequestDtoValidator` - mirrors the create rules (valid, past date, empty title, non-positive amount, three-decimal amount).
+- `ApprovalActionDtoValidator` - valid Approve / Reject pass; null remarks allowed; out-of-range enum and remarks over 1000 chars fail.
+- `CreateSponsorshipTypeDtoValidator` / `UpdateSponsorshipTypeDtoValidator` - valid pass; empty name and over-100-char name fail.
+
+#### Application - Mappers (`SponsorshipRequestMapperTests`)
+
+- Request -> DTO maps all fields plus the requestor and type navigations, and tolerates missing navigations by emitting empty strings; WorkflowHistory -> DTO and SponsorshipType -> DTO mappings.
+
+#### Infrastructure - PasswordHasher (`PasswordHasherTests`)
+
+- Hash never returns the plaintext; `Verify` returns true for the correct password and false for the wrong one; hashing the same password twice yields different salted hashes that both verify.
+
+#### Infrastructure - JwtTokenService (`JwtTokenServiceTests`)
+
+- Access-token expiry is derived from settings; the token embeds `sub`, email, role, name, issuer, and audience claims; refresh tokens are unique and decode to 64 random bytes; `GetPrincipalFromExpiredToken` returns a principal for a validly-signed (even expired) token but rejects garbage, a token signed with a different key, and a token with the wrong issuer.
+
+#### Infrastructure - Repositories against the in-memory database
+
+- `SponsorshipRequestRepository` - `GetById` eager-loads requestor and type, and returns null when absent; `ListByStatus` filters; `ListByRequestor` scopes to one user; `ListAll` orders by `CreatedAt` descending; `GetByIdWithHistory` includes the workflow history.
+- `RefreshTokenRepository` - add then get-by-token round-trips; null for unknown tokens; `RevokeAllForUser` revokes only that user's active tokens, leaving already-revoked timestamps and other users' tokens untouched.
+- `UserRepository` - `GetByEmail` / `GetById` load the Role navigation; null for unknown email.
+- `SponsorshipTypeRepository` - `ListAsync(activeOnly: true)` excludes disabled types; `ListAsync(activeOnly: false)` returns everything ordered by name; `GetById` returns a match or null; `Add` persists a new active type.
