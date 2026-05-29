@@ -38,6 +38,7 @@ Backend/
     Sponsorship.Application/               Services, DTOs, validators, ports
     Sponsorship.Infrastructure/            EF Core, JWT, BCrypt, repositories
     Sponsorship.Api/                       Composition root, controllers, middleware
+    Sponsorship.Application.Tests/         xUnit test suite (see section 12)
 ```
 
 ### 2.1 Project Responsibilities
@@ -441,7 +442,7 @@ GET    /api/health                                     Liveness probe
 
 ## 12. Testing
 
-A dedicated test project `tests/Sponsorship.Application.Tests` (added to `Sponsorship.sln`) covers all four layers from a single assembly. It references `Sponsorship.Infrastructure`, which transitively pulls in Application and Domain, so Domain, Application, and Infrastructure code can be exercised without multiple test projects. **166 tests, all passing.**
+A dedicated test project `src/Sponsorship.Application.Tests` (added to `Sponsorship.sln` alongside the other projects) covers all four layers from a single assembly. It references `Sponsorship.Infrastructure`, which transitively pulls in Application and Domain, so Domain, Application, and Infrastructure code can be exercised without multiple test projects. **166 tests, all passing.**
 
 ### 12.1 Test Stack
 
@@ -467,7 +468,7 @@ Shared helpers live in `TestSupport/`:
 dotnet test
 
 # Or just the test project
-dotnet test tests/Sponsorship.Application.Tests
+dotnet test src/Sponsorship.Application.Tests
 
 # With code coverage
 dotnet test --collect:"XPlat Code Coverage"
