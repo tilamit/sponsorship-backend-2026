@@ -341,9 +341,9 @@ Alternatively run `dotnet ef database update` locally with the production connec
 - Persistent tunnels keep the same URL across restarts, but the tunnel must be re-launched from VS after a reboot.
 - Do not commit the tunnel URL into source code. Keep it in the README / submission notes only and inject it into the frontend's `environment.prod.ts` at build time.
 
-### 8.5 Project URL
+### 8.5 Swagger URL
 
-- API: https://x1xlffq8-7225.inc1.devtunnels.ms/swagger/index.html
+- Endpoint: https://atbest2020-001-site1.ntempurl.com/swagger/index.html
 
 ---
 
