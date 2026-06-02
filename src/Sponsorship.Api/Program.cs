@@ -74,6 +74,8 @@ try
             .AllowCredentials());
     });
 
+    builder.Services.AddHealthChecks();
+
     var app = builder.Build();
 
     using (var scope = app.Services.CreateScope())
@@ -102,6 +104,8 @@ try
     app.UseRateLimiter();
 
     app.MapControllers();
+
+    app.MapHealthChecks("/health");
 
     app.Run();
 }

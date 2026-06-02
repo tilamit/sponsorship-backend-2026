@@ -47,30 +47,45 @@ public class WorkflowService : IWorkflowService
     public async Task ManagerDecisionAsync(Guid requestId, ApprovalActionDto action, CancellationToken ct = default)
     {
         var userId = RequireUserId();
-        var entity = await _requests.GetByIdAsync(requestId, ct)
-            ?? throw new NotFoundException("SponsorshipRequest", requestId);
 
-        if (action.Action == ApprovalDecision.Approve)
-            entity.ManagerApprove(userId, action.Remarks, _clock.UtcNow);
-        else
-            entity.ManagerReject(userId, action.Remarks, _clock.UtcNow);
+        // Load + transition + save run in one serializable transaction so the
+        // PendingManagerApproval → PendingFinanceReview/Rejected status change and
+        // its workflow-history row commit atomically, and two managers can't both
+        // act on the same pending request.
+        await _uow.ExecuteInTransactionAsync(async token =>
+        {
+            var entity = await _requests.GetByIdAsync(requestId, token)
+                ?? throw new NotFoundException("SponsorshipRequest", requestId);
 
-        await _uow.SaveChangesAsync(ct);
+            if (action.Action == ApprovalDecision.Approve)
+                entity.ManagerApprove(userId, action.Remarks, _clock.UtcNow);
+            else
+                entity.ManagerReject(userId, action.Remarks, _clock.UtcNow);
+
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+
         _cache.Remove(HistoryKey(requestId));
     }
 
     public async Task FinanceDecisionAsync(Guid requestId, ApprovalActionDto action, CancellationToken ct = default)
     {
         var userId = RequireUserId();
-        var entity = await _requests.GetByIdAsync(requestId, ct)
-            ?? throw new NotFoundException("SponsorshipRequest", requestId);
 
-        if (action.Action == ApprovalDecision.Approve)
-            entity.FinanceApprove(userId, action.Remarks, _clock.UtcNow);
-        else
-            entity.FinanceReject(userId, action.Remarks, _clock.UtcNow);
+        // Same atomic guarantee for the PendingFinanceReview → Approved/Rejected step.
+        await _uow.ExecuteInTransactionAsync(async token =>
+        {
+            var entity = await _requests.GetByIdAsync(requestId, token)
+                ?? throw new NotFoundException("SponsorshipRequest", requestId);
 
-        await _uow.SaveChangesAsync(ct);
+            if (action.Action == ApprovalDecision.Approve)
+                entity.FinanceApprove(userId, action.Remarks, _clock.UtcNow);
+            else
+                entity.FinanceReject(userId, action.Remarks, _clock.UtcNow);
+
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+
         _cache.Remove(HistoryKey(requestId));
     }
 

@@ -105,25 +105,34 @@ public class SponsorshipRequestService : ISponsorshipRequestService
     public async Task SubmitAsync(Guid id, CancellationToken ct = default)
     {
         var userId = RequireUserId();
-        var entity = await _requests.GetByIdAsync(id, ct)
-            ?? throw new NotFoundException("SponsorshipRequest", id);
-        if (entity.RequestorId != userId)
-            throw new ForbiddenException("You can only submit your own requests.");
 
-        entity.Submit(userId, _clock.UtcNow);
-        await _uow.SaveChangesAsync(ct);
+        // Draft → PendingManagerApproval: status change and history row commit atomically.
+        await _uow.ExecuteInTransactionAsync(async token =>
+        {
+            var entity = await _requests.GetByIdAsync(id, token)
+                ?? throw new NotFoundException("SponsorshipRequest", id);
+            if (entity.RequestorId != userId)
+                throw new ForbiddenException("You can only submit your own requests.");
+
+            entity.Submit(userId, _clock.UtcNow);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
     }
 
     public async Task CancelAsync(Guid id, string? remarks, CancellationToken ct = default)
     {
         var userId = RequireUserId();
-        var entity = await _requests.GetByIdAsync(id, ct)
-            ?? throw new NotFoundException("SponsorshipRequest", id);
-        if (entity.RequestorId != userId)
-            throw new ForbiddenException("You can only cancel your own requests.");
 
-        entity.Cancel(userId, remarks, _clock.UtcNow);
-        await _uow.SaveChangesAsync(ct);
+        await _uow.ExecuteInTransactionAsync(async token =>
+        {
+            var entity = await _requests.GetByIdAsync(id, token)
+                ?? throw new NotFoundException("SponsorshipRequest", id);
+            if (entity.RequestorId != userId)
+                throw new ForbiddenException("You can only cancel your own requests.");
+
+            entity.Cancel(userId, remarks, _clock.UtcNow);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
     }
 
     private Guid RequireUserId()

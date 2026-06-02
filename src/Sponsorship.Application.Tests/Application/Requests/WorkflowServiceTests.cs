@@ -16,7 +16,7 @@ public class WorkflowServiceTests
     private readonly ISponsorshipRequestRepository _requests = Substitute.For<ISponsorshipRequestRepository>();
     private readonly ICurrentUserService _current = Substitute.For<ICurrentUserService>();
     private readonly FixedDateTimeProvider _clock = FixedDateTimeProvider.Default;
-    private readonly IUnitOfWork _uow = Substitute.For<IUnitOfWork>();
+    private readonly IUnitOfWork _uow = UnitOfWorkSubstitute.Create();
     private readonly PassThroughCacheService _cache = new();
 
     private readonly Guid _managerId = Guid.NewGuid();

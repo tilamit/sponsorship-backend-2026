@@ -19,6 +19,7 @@ ASP.NET Core 8 Web API for an internal sponsorship request approval workflow. St
 | API Docs         | Swashbuckle (Swagger UI with JWT Bearer support)          |
 | Architecture     | Onion (Domain -> Application -> Infrastructure -> Api)    |
 | Rate limiting    | Built-in .NET 8 Rate Limiter (sliding/fixed/token bucket) |
+| Transactions     | Serializable DB transactions via IUnitOfWork + EF execution strategy |
 
 ---
 
@@ -381,15 +382,26 @@ Rejections return 429 with a ProblemDetails body and a Retry-After header.
 
 `ICacheService` is backed by `IMemoryCache` (single-node in-process). Currently used for `/api/users/me` with a 2-minute TTL keyed by user id. The cache has a size limit of 1024 entries and 20 percent compaction to avoid unbounded growth.
 
-### 9.6 CORS
+### 9.6 Database Transactions
+
+Multi-step workflow operations that change a request's status **and** append a `WorkflowHistory` audit row are wrapped in a single database transaction so the two writes can never be persisted half-way - either both commit or both roll back.
+
+- The boundary is owned by the Application layer through `IUnitOfWork.ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, ...)`. Repositories never open transactions or call `SaveChanges` themselves; the service decides what is atomic.
+- The implementation (`UnitOfWork.ExecuteInTransactionAsync`) opens the transaction at `IsolationLevel.Serializable`, calls `operation`, commits on success, and rolls back on any exception. Serializable isolation also prevents two approvers from acting on the same pending request concurrently.
+- The transaction runs through the provider's execution strategy (`Database.CreateExecutionStrategy().ExecuteAsync(...)`) so it cooperates with `EnableRetryOnFailure` - a transient SQL failure retries the whole load-mutate-save block atomically rather than re-running a partial write.
+- Used by: `SponsorshipRequestService.SubmitAsync` / `CancelAsync` and `WorkflowService.ManagerDecisionAsync` / `FinanceDecisionAsync`. (Single-row writes such as create/update do not need an explicit transaction - one `SaveChanges` is already atomic.)
+
+`EnableRetryOnFailure` is configured in `Infrastructure/DependencyInjection.cs` (max 3 retries, up to 5s delay).
+
+### 9.7 CORS
 
 Origins are read from `Cors:AllowedOrigins` in configuration. The Angular dev URL `http://localhost:4200` is allowed in Development; production hosts and the dev tunnel URL must be added to the list and the API restarted. The policy is named `AllowFrontend`, restricts headers to `Content-Type` and `Authorization`, allows the four HTTP verbs in use, and enables credentials so the refresh cookie can flow.
 
-### 9.7 Compression
+### 9.8 Compression
 
 Brotli and Gzip response compression is enabled for JSON, including over HTTPS, at the Fastest level - good default trade-off for an API.
 
-### 9.8 Cookie Policy
+### 9.9 Cookie Policy
 
 Refresh-token cookies are set with HttpOnly = true, Secure = true, SameSite = Strict, Path = /api/auth. This means JS on the SPA cannot read them, browsers will not send them over plain HTTP, and they will not be attached to third-party requests.
 
@@ -433,7 +445,7 @@ GET    /api/health                                     Liveness probe
 - Refresh tokens are stored as raw strings, not hashes. Acceptable for assessment scope; in production they would be hashed at rest the same way passwords are. The HttpOnly cookie still protects them from XSS exfiltration.
 - No CQRS / MediatR. Service classes are clearer and avoid an extra dependency without losing testability.
 - Manual DTO mapping (no AutoMapper). The mapping surface is small enough that the convenience of a mapper does not outweigh the runtime reflection cost and the indirection.
-- IUnitOfWork wraps EF Core's SaveChanges. Repositories never call SaveChanges directly - that responsibility belongs to the service so transactional boundaries are explicit.
+- IUnitOfWork wraps EF Core's SaveChanges and exposes `ExecuteInTransactionAsync` for multi-write atomic operations. Repositories never call SaveChanges or open transactions directly - that responsibility belongs to the service so transactional boundaries are explicit (see section 9.6). Workflow status changes and their audit-history rows commit inside one serializable transaction; single-row writes rely on SaveChanges being atomic on its own.
 - File upload (SupportingDocumentPath) is in the schema but the upload endpoint is intentionally not implemented - the column is reserved for a future iteration.
 - In-memory cache (IMemoryCache) is fine for single-instance deployments. A multi-node deployment would swap `MemoryCacheService` for a distributed cache (Redis) by re-binding `ICacheService`.
 - Swagger is left enabled in all environments so the assessor can drive the API directly. In a real production deployment it would be Development-only.
@@ -460,6 +472,7 @@ Shared helpers live in `TestSupport/`:
 - `PassThroughCacheService` - a real `ICacheService` double that always invokes the factory and records `Remove` / `RemoveByPrefix` calls, so cache-eviction behaviour is assertable.
 - `TestData` - factory for building domain entities (User, Role, SponsorshipType, SponsorshipRequest, RefreshToken) with sensible defaults.
 - `InMemoryDb` - spins up an isolated `AppDbContext` per call so repository tests never share state.
+- `UnitOfWorkSubstitute` - an `IUnitOfWork` mock whose `ExecuteInTransactionAsync` runs the supplied operation in-line (no real database in unit tests), so transaction-wrapped service code is asserted exactly like the non-transactional path - the mutation runs and any `SaveChangesAsync` or exception propagates as it would inside the real serializable transaction.
 
 ### 12.2 Running the Tests
 

@@ -38,8 +38,8 @@ public class AuthService : IAuthService
     {
         var user = await _users.GetByEmailAsync(dto.Email, ct);
 
-        if (user is null || !user.IsActive)
-            //if (user is null || !user.IsActive || !_hasher.Verify(dto.Password, user.PasswordHash))
+        //if (user is null || !user.IsActive)
+            if (user is null || !user.IsActive || !_hasher.Verify(dto.Password, user.PasswordHash))
             throw new UnauthorizedException("Invalid email or password.");
 
         return await IssueTokensAsync(user, ct);

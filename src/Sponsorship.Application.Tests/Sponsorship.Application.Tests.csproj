@@ -33,7 +33,7 @@
   <ItemGroup>
     <!-- Referencing the composition root brings Application + Domain transitively,
          so the single test project can cover every layer. -->
-    <ProjectReference Include="..\..\src\Sponsorship.Infrastructure\Sponsorship.Infrastructure.csproj" />
+    <ProjectReference Include="..\Sponsorship.Infrastructure\Sponsorship.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

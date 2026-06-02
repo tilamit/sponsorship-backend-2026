@@ -18,7 +18,7 @@ public class SponsorshipRequestServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly ICurrentUserService _current = Substitute.For<ICurrentUserService>();
     private readonly FixedDateTimeProvider _clock = FixedDateTimeProvider.Default;
-    private readonly IUnitOfWork _uow = Substitute.For<IUnitOfWork>();
+    private readonly IUnitOfWork _uow = UnitOfWorkSubstitute.Create();
 
     private readonly Guid _userId = Guid.NewGuid();
 
