@@ -302,48 +302,52 @@ Swagger UI is available at https://localhost:7225/swagger.
 
 ---
 
-## 8. Deployment - Visual Studio Dev Tunnel
+## 8. Deployment - SmarterASP.NET Hosting
 
-The backend is exposed publicly using Visual Studio's built-in Dev Tunnels feature. No external host or paid plan is involved. The tunnel forwards traffic to the locally running Kestrel instance over HTTPS with a Microsoft-managed certificate.
+The backend is hosted on **SmarterASP.NET** (free Windows/IIS plan), which natively runs .NET 8 and provides a free MSSQL database plus a temporary `*.ntempurl.com` HTTPS URL. Unlike the previous dev-tunnel setup, the app stays online without Visual Studio running.
 
-### 8.1 One-time setup
+### 8.1 One-time account and site setup
 
-1. Open `Sponsorship.sln` in Visual Studio 2026.
-2. Sign in to Visual Studio with the same Microsoft account you want associated with the tunnel.
-3. From the toolbar dropdown next to the Run button choose `Dev Tunnels` -> `Create a Tunnel...`.
-4. In the dialog:
-   - Account - the signed-in account
-   - Name - e.g. `sponsorship-api`
-   - Tunnel Type - `Persistent` (URL stays the same across restarts)
-   - Access - `Public` (the assessor needs to reach it without an MS account)
-5. Click OK. Visual Studio creates the tunnel and selects it as active.
+1. Sign up for a free account at https://www.smarterasp.net/ (no credit card).
+2. In the control panel create a **website** - you get a temporary URL like `https://atbest2020-001-site1.ntempurl.com`. Confirm the app pool is set to **.NET Core / .NET 8**.
+3. Create an **MSSQL database** from the control panel. Note the server host, database name, user, and password - these go into the live connection string.
 
-### 8.2 Run with the tunnel
+### 8.2 Publish from Visual Studio
 
-1. Make sure the `https` launch profile is selected.
-2. Press F5 (or Ctrl+F5). Kestrel starts on https://localhost:7225 and the tunnel UI shows the public URL (something like `https://abcd1234-7225.use.devtunnels.ms`).
-3. Open the public URL + `/swagger` to confirm it is reachable.
-4. The tunnel host (`*.devtunnels.ms`) must also be in the `Cors:AllowedOrigins` list if the Angular frontend will hit it from a different origin in the browser - otherwise CORS preflights will fail.
+1. In the control panel open **Websites -> (your site) -> Publish Settings** and download the `.PublishSettings` file (Web Deploy).
+2. In Visual Studio 2026 right-click `Sponsorship.Api` -> **Publish** -> **Import Profile** and select the downloaded file.
+3. Click **Publish**. Web Deploy pushes the build to IIS; the site is live at the `*.ntempurl.com` URL.
 
-### 8.3 Database for the deployed instance
+> FTP alternative: the control panel also exposes FTP credentials. Publish to a local folder (`dotnet publish -c Release`) and upload the output to the site's `wwwroot` if you prefer not to use Web Deploy.
 
-For the live test environment the API is configured against a remote MSSQL database (see `appsettings.json`). Apply the schema once:
+### 8.3 Production configuration (secrets)
 
-- Connect SSMS to the remote MSSQL host with the same credentials.
-- Run `db/01_schema.sql` then `db/02_seed.sql`.
+Do not commit secrets. Override them on the host instead - set them as **App Settings / Environment Variables** in the SmarterASP.NET control panel (or in the deployed `appsettings.Production.json`):
 
-Alternatively run `dotnet ef database update` locally with the production connection string in the `ConnectionStrings__DefaultConnection` environment variable.
+- `ConnectionStrings__DefaultConnection` - the remote MSSQL connection string from step 8.1.
+- `Jwt__Key` - a long random secret (>= 32 chars).
+- `ASPNETCORE_ENVIRONMENT` - kept as `Development` (or Swagger left on) so assessors can drive the API.
 
-### 8.4 Caveats
+### 8.4 Apply the database schema
 
-- The tunnel stays up only while Visual Studio (and the app) is running. Close VS and the public URL stops responding.
-- First request after the tunnel has been idle can be slightly slower because the connection is being re-established.
-- Persistent tunnels keep the same URL across restarts, but the tunnel must be re-launched from VS after a reboot.
-- Do not commit the tunnel URL into source code. Keep it in the README / submission notes only and inject it into the frontend's `environment.prod.ts` at build time.
+Once the MSSQL database exists, seed it once:
 
-### 8.5 Swagger URL
+- Connect **SSMS 2022** to the remote MSSQL host using the credentials from step 8.1, then run `db/01_schema.sql` followed by `db/02_seed.sql`.
+- Alternatively run `dotnet ef database update` locally with the remote connection string in the `ConnectionStrings__DefaultConnection` environment variable.
 
-- Endpoint: https://atbest2020-001-site1.ntempurl.com/swagger/index.html
+### 8.5 CORS
+
+Add the deployed frontend origin (and the `*.ntempurl.com` API URL if hit cross-origin) to `Cors:AllowedOrigins`, otherwise browser preflight requests fail. The policy already enables credentials so the refresh cookie can flow.
+
+### 8.6 Caveats
+
+- The free plan sleeps after idle, so the first request after a pause can be a few seconds slower (cold start).
+- The `*.ntempurl.com` URL is temporary - keep it in the README / submission notes and inject it into the frontend's `environment.prod.ts` at build time rather than hard-coding it in source.
+
+### 8.7 Live URLs
+
+- API base: https://atbest2020-001-site1.ntempurl.com
+- Swagger: https://atbest2020-001-site1.ntempurl.com/swagger/index.html
 
 ---
 
@@ -395,7 +399,7 @@ Multi-step workflow operations that change a request's status **and** append a `
 
 ### 9.7 CORS
 
-Origins are read from `Cors:AllowedOrigins` in configuration. The Angular dev URL `http://localhost:4200` is allowed in Development; production hosts and the dev tunnel URL must be added to the list and the API restarted. The policy is named `AllowFrontend`, restricts headers to `Content-Type` and `Authorization`, allows the four HTTP verbs in use, and enables credentials so the refresh cookie can flow.
+Origins are read from `Cors:AllowedOrigins` in configuration. The Angular dev URL `http://localhost:4200` is allowed in Development; production hosts and the deployed SmarterASP.NET URL must be added to the list and the API restarted. The policy is named `AllowFrontend`, restricts headers to `Content-Type` and `Authorization`, allows the four HTTP verbs in use, and enables credentials so the refresh cookie can flow.
 
 ### 9.8 Compression
 
