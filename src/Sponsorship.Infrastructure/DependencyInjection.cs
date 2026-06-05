@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Sponsorship.Application.Auth;
 using Sponsorship.Application.Common.Interfaces;
 using Sponsorship.Infrastructure.Caching;
 using Sponsorship.Infrastructure.Common;
 using Sponsorship.Infrastructure.Identity;
+using Sponsorship.Infrastructure.Logging;
 using Sponsorship.Infrastructure.Persistence;
 using Sponsorship.Infrastructure.Persistence.Repositories;
 
@@ -35,6 +37,17 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ICacheService, MemoryCacheService>();
+
+        // Day-wise login-count log. Directory is overridable via
+        // "LoginCountLog:Directory"; defaults to "logs/login-count" (relative
+        // to the working dir, alongside the Serilog "logs/" output).
+        var loginLogDir = cfg["LoginCountLog:Directory"];
+        if (string.IsNullOrWhiteSpace(loginLogDir))
+            loginLogDir = Path.Combine("logs", "login-count");
+        services.AddSingleton<ILoginCountLogger>(sp => new LoginCountFileLogger(
+            sp.GetRequiredService<IDateTimeProvider>(),
+            sp.GetRequiredService<ILogger<LoginCountFileLogger>>(),
+            loginLogDir));
 
         return services;
     }

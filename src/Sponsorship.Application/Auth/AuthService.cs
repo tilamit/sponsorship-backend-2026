@@ -14,6 +14,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwt;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _uow;
+    private readonly ILoginCountLogger _loginCountLog;
     private readonly JwtSettings _settings;
 
     public AuthService(
@@ -23,6 +24,7 @@ public class AuthService : IAuthService
         IJwtTokenService jwt,
         IDateTimeProvider clock,
         IUnitOfWork uow,
+        ILoginCountLogger loginCountLog,
         IOptions<JwtSettings> settings)
     {
         _users = users;
@@ -31,6 +33,7 @@ public class AuthService : IAuthService
         _jwt = jwt;
         _clock = clock;
         _uow = uow;
+        _loginCountLog = loginCountLog;
         _settings = settings.Value;
     }
 
@@ -41,6 +44,10 @@ public class AuthService : IAuthService
         //if (user is null || !user.IsActive)
             if (user is null || !user.IsActive || !_hasher.Verify(dto.Password, user.PasswordHash))
             throw new UnauthorizedException("Invalid email or password.");
+
+        // Record the successful login in the day-wise count log. The logger
+        // swallows its own IO errors, so this never blocks issuing tokens.
+        await _loginCountLog.RecordSuccessfulLoginAsync(user.Email, ct);
 
         return await IssueTokensAsync(user, ct);
     }

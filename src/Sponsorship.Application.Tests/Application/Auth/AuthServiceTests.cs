@@ -18,6 +18,7 @@ public class AuthServiceTests
     private readonly IPasswordHasher _hasher = Substitute.For<IPasswordHasher>();
     private readonly IJwtTokenService _jwt = Substitute.For<IJwtTokenService>();
     private readonly IUnitOfWork _uow = Substitute.For<IUnitOfWork>();
+    private readonly ILoginCountLogger _loginCountLog = Substitute.For<ILoginCountLogger>();
     private readonly FixedDateTimeProvider _clock = FixedDateTimeProvider.Default;
     private readonly JwtSettings _settings = new()
     {
@@ -29,7 +30,7 @@ public class AuthServiceTests
     };
 
     private AuthService CreateSut() =>
-        new(_users, _refreshTokens, _hasher, _jwt, _clock, _uow, Options.Create(_settings));
+        new(_users, _refreshTokens, _hasher, _jwt, _clock, _uow, _loginCountLog, Options.Create(_settings));
 
     private User ActiveUser(out Role role, bool active = true)
     {
